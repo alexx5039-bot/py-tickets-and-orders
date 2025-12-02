@@ -1,34 +1,32 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.utils.dateparse import parse_datetime
+import datetime
 from django.db.models import QuerySet
-from db.models import Order, Ticket, User
+from db.models import Order, Ticket
 
 
+@transaction.atomic
 def create_order(
         tickets: list[dict],
-        username: str,
-        date: str = None
+        username: str, date: str = None
 ) -> Order:
-    user = User.objects.get(username=username)
 
-    with transaction.atomic():
+    user = get_user_model().objects.get(username=username)
 
-        order_kwargs = {"user": user}
-        if date:
-            parsed = parse_datetime(date)
-            if parsed is None:
-                raise ValueError("Invalid date format, use 'YYYY-MM-DD HH:MM'")
-            order_kwargs["created_at"] = parsed
+    order = Order.objects.create(user=user)
 
-        order = Order.objects.create(**order_kwargs)
+    if date:
+        dt = datetime.datetime.strptime(date, "%Y-%m-%d %H:%M")
+        Order.objects.filter(id=order.id).update(created_at=dt)
+        order.created_at = dt
 
-        for data in tickets:
-            Ticket.objects.create(
-                movie_session_id=data["movie_session"],
-                order=order,
-                row=data["row"],
-                seat=data["seat"]
-            )
+    for ticket in tickets:
+        Ticket.objects.create(
+            order=order,
+            movie_session_id=ticket["movie_session"],
+            row=ticket["row"],
+            seat=ticket["seat"]
+        )
 
     return order
 
